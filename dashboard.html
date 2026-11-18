@@ -244,14 +244,23 @@
       try{if(channel)channel.postMessage(m);}catch(e){}
       try{if(target&&target.postMessage)target.postMessage(m,'*');else if(window.opener&&!window.opener.closed)window.opener.postMessage(m,'*');}catch(e){}}
     function setLink(on){const p=$('linkPill');p.classList.toggle('on',on);$('linkText').textContent=on?'● Camera console connected':'Waiting for camera console';}
+    function consoleSeen(){lastMsgAt=Date.now();setLink(true);}
     function onIncoming(d,source){
       if(!d||typeof d!=='object')return;
-      if(d.type==='hello'){lastMsgAt=Date.now();setLink(true);announce(source);return;}
-      if(d.type==='detection'){lastMsgAt=Date.now();setLink(true);if(d.park)$('parkName').textContent=d.park;addDetection(d);}
+      if(d.type==='hello'){consoleSeen();if(d.park)$('parkName').textContent=d.park;announce(source);return;}
+      if(d.type==='detection'){consoleSeen();if(d.park)$('parkName').textContent=d.park;addDetection(d);}
     }
     if(channel)channel.onmessage=e=>onIncoming(e.data);
     window.addEventListener('message',e=>onIncoming(e.data,e.source));
-    announce();
+    window.addEventListener('storage',e=>{if(e.key==='wildlife-cctv-ping')consoleSeen();});
+    // Heartbeat: announce ourselves every few seconds (channel + shared storage) so the console sees us
+    // however the pages were opened, and drop back to "waiting" when the console goes quiet.
+    function pingConsole(){
+      announce();
+      try{localStorage.setItem('wildlife-dash-ping',String(Date.now()));}catch(e){}
+      if(lastMsgAt&&Date.now()-lastMsgAt>7000)setLink(false);
+    }
+    setInterval(pingConsole,2500);pingConsole();
 
     // ---------- detections ----------
     function normalise(d){
@@ -463,7 +472,7 @@
     paintPrefs();
 
     // ---------- periodic refresh (time-ago, link status) ----------
-    setInterval(()=>{renderStats();if(lastMsgAt&&Date.now()-lastMsgAt>120000){$('linkText').textContent='Camera console quiet for '+ago(lastMsgAt);}},15000);
+    setInterval(renderStats,15000);
     renderAll();
     ingestQueue();   // pick up anything the console logged before this page was open
   </script>

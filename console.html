@@ -352,10 +352,21 @@
 
     if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>{userLocation={lat:p.coords.latitude,lon:p.coords.longitude};},()=>{},{timeout:8000});
 
-    dashBtn.addEventListener('click',()=>{dashWin=window.open('dashboard.html','wildlifeDashboard');linkStatus.classList.add('on');linkText.textContent='Dashboard window opened';send({type:'hello'});});
-    function onIncoming(d){if(d&&d.type==='dash-ready'){linkStatus.classList.add('on');linkText.textContent='● Dashboard connected';}}
+    dashBtn.addEventListener('click',()=>{dashWin=window.open('dashboard.html','wildlifeDashboard');linkText.textContent='Dashboard window opened — waiting for it to answer…';send({type:'hello'});});
+    // Heartbeat: the console pings every few seconds (channel + shared storage) and the dashboard answers,
+    // so the link shows as connected however the two pages were opened (button, link, or two separate windows).
+    let dashSeenAt=0;
+    function dashSeen(){dashSeenAt=Date.now();linkStatus.classList.add('on');linkText.textContent='● Dashboard connected';}
+    function onIncoming(d){if(d&&d.type==='dash-ready')dashSeen();}
     if(channel)channel.onmessage=e=>onIncoming(e.data);
     window.addEventListener('message',e=>onIncoming(e.data));
+    window.addEventListener('storage',e=>{if(e.key==='wildlife-dash-ping')dashSeen();});
+    function pingDash(){
+      send({type:'hello'});
+      try{localStorage.setItem('wildlife-cctv-ping',String(Date.now()));}catch(e){}
+      if(dashSeenAt&&Date.now()-dashSeenAt>7000){linkStatus.classList.remove('on');linkText.textContent='Dashboard not connected — open it in another tab or window';}
+    }
+    setInterval(pingDash,2500);pingDash();
 
     // ---------- Camera ----------
     startBtn.addEventListener('click',async()=>{
