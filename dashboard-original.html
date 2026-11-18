@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard · Wildlife Monitor</title>
+<style>
+  :root{--bg:#0d1512;--panel:#14201b;--accent:#38d39f;--danger:#ff5c6c;--warn:#ffb648;--text:#e8f4ee;--muted:#8fb0a2;--border:#21332b;--grid:#26382f;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#16261f,var(--bg));color:var(--text);min-height:100vh;padding:20px 16px 48px;}
+  .wrap{max-width:960px;margin:0 auto;}
+  header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+  h1{margin:0;font-size:1.5rem;}
+  header p{margin:4px 0 0;color:var(--muted);font-size:.85rem;}
+  .conn{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted);background:var(--panel);border:1px solid var(--border);padding:8px 12px;border-radius:20px;}
+  .conn .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);}
+  .conn.on .dot{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+  .bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+  .stat{flex:1;min-width:130px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;}
+  .stat .num{font-size:1.6rem;font-weight:800;font-variant-numeric:tabular-nums;}
+  .stat .lbl{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+  .stat.injured .num{color:var(--danger);}
+  .stat.animals .num{color:var(--accent);}
+
+  .sheet{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .sheettop{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);}
+  .sheettop h2{margin:0;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+  .sheettop button{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:#1b2a23;color:var(--text);font-size:.8rem;font-weight:600;cursor:pointer;}
+  .sheettop button:hover{background:#223530;}
+  .scroll{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:.86rem;min-width:720px;}
+  thead th{position:sticky;top:0;background:#182a22;color:var(--muted);text-align:left;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;border-bottom:2px solid var(--grid);border-right:1px solid var(--grid);}
+  thead th:first-child{width:44px;text-align:center;}
+  tbody td{padding:9px 12px;border-bottom:1px solid var(--grid);border-right:1px solid var(--grid);white-space:nowrap;}
+  tbody tr:nth-child(even){background:rgba(255,255,255,.02);}
+  tbody tr.alert{background:rgba(255,92,108,.12);}
+  tbody tr.alert:nth-child(even){background:rgba(255,92,108,.16);}
+  td.idx{text-align:center;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .sp{text-transform:capitalize;font-weight:600;}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+  .pill.ok{background:rgba(56,211,159,.16);color:var(--accent);}
+  .pill.alert{background:rgba(255,92,108,.2);color:var(--danger);}
+  .emptyrow td{text-align:center;color:var(--muted);font-style:italic;padding:24px;}
+  .note{max-width:960px;margin:16px auto 0;font-size:.75rem;color:var(--muted);text-align:center;line-height:1.5;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>📊 Wildlife Monitor — Dashboard</h1>
+        <p>Live log from the CCTV feed</p>
+      </div>
+      <div class="conn" id="conn"><span class="dot"></span><span id="connText">Waiting for CCTV…</span></div>
+    </header>
+
+    <div class="bar">
+      <div class="stat animals"><div class="num" id="sTotal">0</div><div class="lbl">Animals logged</div></div>
+      <div class="stat injured"><div class="num" id="sInj">0</div><div class="lbl">Injury alerts</div></div>
+      <div class="stat"><div class="num" id="sLast">—</div><div class="lbl">Last seen</div></div>
+    </div>
+
+    <div class="sheet">
+      <div class="sheettop">
+        <h2>Detection Log</h2>
+        <button id="exportBtn">⬇ Export to CSV (Excel)</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Time</th><th>Animal</th><th>Confidence</th>
+              <th>Blood level</th><th>Status</th><th>Location (GPS)</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="emptyrow"><td colspan="7">No detections yet — start the CCTV feed.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="note">
+      Rows appear automatically as the CCTV detects animals. Red rows = possible injury (high blood-red level).
+      "Blood level" is the % of the frame that looked blood-red — a simple color heuristic, not a medical diagnosis.
+    </p>
+  </div>
+
+  <script>
+    const conn=document.getElementById('conn'),connText=document.getElementById('connText');
+    const tbody=document.getElementById('tbody');
+    const sTotal=document.getElementById('sTotal'),sInj=document.getElementById('sInj'),sLast=document.getElementById('sLast');
+    const exportBtn=document.getElementById('exportBtn');
+
+    let n=0,injuries=0;const rows=[];
+    const channel=('BroadcastChannel'in window)?new BroadcastChannel('wildlife-cctv'):null;
+
+    let parkName='';
+    function markConnected(){conn.classList.add('on');connText.textContent='● CCTV live'+(parkName?' — '+parkName:'');}
+    function announce(){const m={type:'dash-ready'};try{if(channel)channel.postMessage(m);}catch(e){}try{if(window.opener&&!window.opener.closed)window.opener.postMessage(m,'*');}catch(e){}}
+    function handle(d){if(!d||!d.type)return;if(d.park)parkName=d.park;if(d.type==='hello'){markConnected();announce();}if(d.type==='detection'){markConnected();addRow(d);}}
+    if(channel)channel.onmessage=e=>handle(e.data);
+    window.addEventListener('message',e=>handle(e.data));
+    announce();setTimeout(announce,400);
+
+    function addRow(d){
+      const empty=tbody.querySelector('.emptyrow');if(empty)empty.remove();
+      n++;if(d.injured)injuries++;
+      sTotal.textContent=n;sInj.textContent=injuries;sLast.textContent=d.species;
+      const loc=d.location?`${d.location.lat.toFixed(4)}, ${d.location.lon.toFixed(4)}`:'—';
+      rows.push({n,time:d.time,species:d.species,conf:Math.round(d.prob*100),blood:d.blood.toFixed(1),status:d.injured?'INJURY ALERT':'Normal',loc});
+      const tr=document.createElement('tr');
+      if(d.injured)tr.className='alert';
+      tr.innerHTML=`
+        <td class="idx">${n}</td>
+        <td>${d.time}</td>
+        <td class="sp">${d.species}</td>
+        <td>${Math.round(d.prob*100)}%</td>
+        <td>${d.blood.toFixed(1)}%</td>
+        <td><span class="pill ${d.injured?'alert':'ok'}">${d.injured?'Injury alert':'Normal'}</span></td>
+        <td>${loc}</td>`;
+      tbody.prepend(tr);
+    }
+
+    exportBtn.addEventListener('click',()=>{
+      if(!rows.length){alert('Nothing to export yet.');return;}
+      const head=['#','Time','Animal','Confidence %','Blood level %','Status','Location'];
+      const csv=[head.join(',')].concat(
+        rows.map(r=>[r.n,`"${r.time}"`,r.species,r.conf,r.blood,`"${r.status}"`,`"${r.loc}"`].join(','))
+      ).join('\n');
+      const blob=new Blob([csv],{type:'text/csv'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='wildlife-detection-log.csv';a.click();
+    });
+  </script>
+</body>
+</html>
